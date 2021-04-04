@@ -1,16 +1,13 @@
-import os
 import torch
-import torch.nn as nn
 import numpy as np
-from model import VisionTransformer
-from config import get_train_config
-from checkpoint import load_checkpoint
-from data_loaders import *
-from utils import setup_device, accuracy, MetricTracker, TensorboardWriter
 
 
-def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, metrics, device=torch.device('cpu')):
+def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, metrics, metric_names, metric_fns,
+                device=torch.device('cpu'), scheduler_step_per_batch=True):
     metrics.reset()
+
+    m1_name, m2_name = metric_names
+    m1_fn, m2_fn = metric_fns
 
     # training loop
     for batch_idx, (batch_data, batch_target) in enumerate(data_loader):
@@ -22,26 +19,35 @@ def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, m
         loss = criterion(batch_pred, batch_target)
         loss.backward()
         optimizer.step()
-        lr_scheduler.step()
+        if scheduler_step_per_batch:
+            lr_scheduler.step()
 
-        acc1, acc5 = accuracy(batch_pred, batch_target, topk=(1, 5))
+        m1, m2 = m1_fn(batch_pred, batch_target), m2_fn(batch_pred, batch_target)
 
         metrics.writer.set_step((epoch - 1) * len(data_loader) + batch_idx)
         metrics.update('loss', loss.item())
-        metrics.update('acc1', acc1.item())
-        metrics.update('acc5', acc5.item())
+        metrics.update(m1_name, m1.item())
+        metrics.update(m2_name, m2.item())
 
         if batch_idx % 100 == 0:
-            print("Train Epoch: {:03d} Batch: {:05d}/{:05d} Loss: {:.4f} Acc@1: {:.2f}, Acc@5: {:.2f}"
-                    .format(epoch, batch_idx, len(data_loader), loss.item(), acc1.item(), acc5.item()))
+            print("Train Epoch: {:03d} Batch: {:05d}/{:05d} Loss: {:.4f} {}: {:.2f}, {}: {:.2f}"
+                  .format(epoch, batch_idx, len(data_loader), loss.item(), m1_name, m1.item(), m2_name, m2.item()))
+
+    if not scheduler_step_per_batch:
+        lr_scheduler.step()
+
     return metrics.result()
 
 
-def valid_epoch(epoch, model, data_loader, criterion, metrics, device=torch.device('cpu')):
+def valid_epoch(epoch, model, data_loader, criterion, metrics, metric_names, metric_fns, device=torch.device('cpu')):
     metrics.reset()
     losses = []
-    acc1s = []
-    acc5s = []
+    m1s = []
+    m2s = []
+
+    m1_name, m2_name = metric_names
+    m1_fn, m2_fn = metric_fns
+
     # validation loop
     with torch.no_grad():
         for batch_idx, (batch_data, batch_target) in enumerate(data_loader):
@@ -50,19 +56,22 @@ def valid_epoch(epoch, model, data_loader, criterion, metrics, device=torch.devi
 
             batch_pred = model(batch_data)
             loss = criterion(batch_pred, batch_target)
-            acc1, acc5 = accuracy(batch_pred, batch_target, topk=(1, 5))
+
+            m1, m2 = m1_fn(batch_pred, batch_target), m2_fn(batch_pred, batch_target)
 
             losses.append(loss.item())
-            acc1s.append(acc1.item())
-            acc5s.append(acc5.item())
+            m1s.append(m1.item())
+            m2s.append(m2.item())
 
     loss = np.mean(losses)
-    acc1 = np.mean(acc1s)
-    acc5 = np.mean(acc5s)
+    m1 = np.mean(m1s)
+    m2 = np.mean(m2s)
     metrics.writer.set_step(epoch, 'valid')
     metrics.update('loss', loss)
-    metrics.update('acc1', acc1)
-    metrics.update('acc5', acc5)
+
+    metrics.update(m1_name, m1)
+    metrics.update(m2_name, m2)
+
     return metrics.result()
 
 
@@ -79,113 +88,3 @@ def save_model(save_dir, epoch, model, optimizer, lr_scheduler, device_ids, best
     if best:
         filename = str(save_dir + 'best.pth')
         torch.save(state, filename)
-
-
-def main():
-    config = get_train_config()
-
-    # device
-    device, device_ids = setup_device(config.n_gpu)
-
-    # tensorboard
-    writer = TensorboardWriter(config.summary_dir, config.tensorboard)
-
-    # metric tracker
-    metric_names = ['loss', 'acc1', 'acc5']
-    train_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
-    valid_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
-
-    # create model
-    print("create model")
-    model = VisionTransformer(
-             image_size=(config.image_size, config.image_size),
-             patch_size=(config.patch_size, config.patch_size),
-             emb_dim=config.emb_dim,
-             mlp_dim=config.mlp_dim,
-             num_heads=config.num_heads,
-             num_layers=config.num_layers,
-             num_classes=config.num_classes,
-             attn_dropout_rate=config.attn_dropout_rate,
-             dropout_rate=config.dropout_rate)
-
-    # load checkpoint
-    if config.checkpoint_path:
-        state_dict = load_checkpoint(config.checkpoint_path)
-        if config.num_classes != state_dict['classifier.weight'].size(0):
-            del state_dict['classifier.weight']
-            del state_dict['classifier.bias']
-            print("re-initialize fc layer")
-            model.load_state_dict(state_dict, strict=False)
-        else:
-            model.load_state_dict(state_dict)
-        print("Load pretrained weights from {}".format(config.checkpoint_path))
-
-    # send model to device
-    model = model.to(device)
-    if len(device_ids) > 1:
-        model = torch.nn.DataParallel(model, device_ids=device_ids)
-
-    # create dataloader
-    print("create dataloaders")
-    train_dataloader = eval("{}DataLoader".format(config.dataset))(
-                    data_dir=os.path.join(config.data_dir, config.dataset),
-                    image_size=config.image_size,
-                    batch_size=config.batch_size,
-                    num_workers=config.num_workers,
-                    split='train')
-    valid_dataloader = eval("{}DataLoader".format(config.dataset))(
-                    data_dir=os.path.join(config.data_dir, config.dataset),
-                    image_size=config.image_size,
-                    batch_size=config.batch_size,
-                    num_workers=config.num_workers,
-                    split='val')
-
-    # training criterion
-    print("create criterion and optimizer")
-    criterion = nn.CrossEntropyLoss()
-
-    # create optimizers and learning rate scheduler
-    optimizer = torch.optim.SGD(
-        params=model.parameters(),
-        lr=config.lr,
-        weight_decay=config.wd,
-        momentum=0.9)
-    lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer=optimizer,
-        max_lr=config.lr,
-        pct_start=config.warmup_steps / config.train_steps,
-        total_steps=config.train_steps)
-
-    # start training
-    print("start training")
-    best_acc = 0.0
-    epochs = config.train_steps // len(train_dataloader)
-    for epoch in range(1, epochs + 1):
-        log = {'epoch': epoch}
-
-        # train the model
-        model.train()
-        result = train_epoch(epoch, model, train_dataloader, criterion, optimizer, lr_scheduler, train_metrics, device)
-        log.update(result)
-
-        # validate the model
-        model.eval()
-        result = valid_epoch(epoch, model, valid_dataloader, criterion, valid_metrics, device)
-        log.update(**{'val_' + k: v for k, v in result.items()})
-
-        # best acc
-        best = False
-        if log['val_acc1'] > best_acc:
-            best_acc = log['val_acc1']
-            best = True
-
-        # save model
-        save_model(config.checkpoint_dir, epoch, model, optimizer, lr_scheduler, device_ids, best)
-
-        # print logged informations to the screen
-        for key, value in log.items():
-            print('    {:15s}: {}'.format(str(key), value))
-
-
-if __name__ == '__main__':
-    main()

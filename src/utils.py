@@ -6,6 +6,19 @@ from pathlib import Path
 from collections import OrderedDict
 from datetime import datetime
 import importlib
+import yaml
+from pytorch_lightning.metrics.functional import f1 as f1_mc
+
+
+class Config:
+    def __init__(self, entries):
+        self.__dict__.update(entries)
+
+
+def parse_yaml_config(path):
+    with open(path, 'r') as f:
+        return Config(yaml.load(f, Loader=yaml.FullLoader))
+
 
 def ensure_dir(dirname):
     dirname = Path(dirname)
@@ -36,9 +49,64 @@ def accuracy(output, target, topk=(1,)):
 
     res = []
     for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0)
+        correct_k = correct[:k].reshape(-1).float().sum(0)
         res.append(correct_k / batch_size * 100.0)
     return res
+
+
+def f1_macro_mc(output, target):
+    return f1_mc(output, target, num_classes=output.shape[-1], average='macro')
+
+
+def jaccard_index(output, target):
+    pred = output > 0.0
+    target = target.bool()
+
+    intersection = pred.logical_and(target)
+    union = pred.logical_or(target)
+
+    card_intersection = intersection.sum(dim=1)
+    card_union = union.sum(dim=1)
+
+    return torch.mean(card_intersection / card_union)
+
+
+def hamming_loss(output, target):
+    pred = output > 0.0
+    target = target.bool()
+
+    return (pred != target).to(torch.float).mean()
+
+
+def precision(output, target):
+    pred = output > 0.0
+    target = target.bool()
+
+    intersection = pred.logical_and(target)
+
+    card_intersection = intersection.sum(dim=1)
+    card_pred = pred.sum(dim=1)
+
+    return torch.mean(card_intersection / card_pred)
+
+
+def recall(output, target):
+    pred = output > 0.0
+    target = target.bool()
+
+    intersection = pred.logical_and(target)
+
+    card_intersection = intersection.sum(dim=1)
+    card_target = target.sum(dim=1)
+
+    return torch.mean(card_intersection / card_target)
+
+
+def f1(output, target):
+    p = precision(output, target)
+    r = recall(output, target)
+
+    return 2 * p * r / (p + r)
 
 
 def setup_device(n_gpu_use):
@@ -53,6 +121,7 @@ def setup_device(n_gpu_use):
     list_ids = list(range(n_gpu_use))
     return device, list_ids
 
+
 def process_config(config):
     print(' *************************************** ')
     print(' The experiment name is {} '.format(config.exp_name))
@@ -60,7 +129,9 @@ def process_config(config):
 
     # add datetime postfix
     timestamp = datetime.now().strftime('%y%m%d_%H%M%S')
-    exp_name = config.exp_name + '_{}_bs{}_lr{}_wd{}'.format(config.dataset, config.batch_size, config.lr, config.wd)
+    exp_name = config.exp_name + '_{}_bs{}_lr{}'.format(config.dataset,
+                                                        config.batch_size,
+                                                        config.optimizer['parameters']['lr'])
     exp_name += ('_' + timestamp)
 
     # create some important directories to be used for that experiments

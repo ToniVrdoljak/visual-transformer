@@ -1,10 +1,14 @@
 import os
-from torch.utils.data import DataLoader
+import torch
+from torch.utils.data import DataLoader, random_split, WeightedRandomSampler
 from torchvision.datasets import CIFAR10, CIFAR100, ImageFolder
 from torchvision.transforms import transforms
 
+from lad_datasets import LadLabelsDataset, LadAttributesDataset, get_image_labels
 
-__all__ = ['CIFAR10DataLoader', 'ImageNetDataLoader', 'CIFAR100DataLoader']
+
+__all__ = ['CIFAR10DataLoader', 'ImageNetDataLoader', 'CIFAR100DataLoader',
+           'LadLabelsDataLoader', 'LadAttributesDataLoader']
 
 
 class CIFAR10DataLoader(DataLoader):
@@ -81,6 +85,103 @@ class ImageNetDataLoader(DataLoader):
         self.dataset = ImageFolder(root=os.path.join(data_dir, split), transform=transform)
         super(ImageNetDataLoader, self).__init__(
             dataset=self.dataset,
+            batch_size=batch_size,
+            shuffle=True if split == 'train' else False,
+            num_workers=num_workers)
+
+
+class LadLabelsDataLoader(DataLoader):
+    def __init__(self, data_dir, split='train', image_size=224, batch_size=16, num_workers=8, train_split=0.6,
+                 valid_split=0.2, sample=False):
+        if split == 'train':
+            transform = transforms.Compose([
+                transforms.Resize((image_size, image_size)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.Resize((image_size, image_size)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ])
+
+        lad_dataset = LadLabelsDataset(data_dir, transform=transform, crop_bb=False)
+
+        size = len(lad_dataset)
+        train_size = int(size * train_split)
+        val_size = int(size * valid_split)
+        test_size = size - train_size - val_size
+
+        train_ds, val_ds, test_ds = \
+            random_split(lad_dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(42))
+
+        if split == 'train' and sample:
+            print('Creating weighted sampler')
+            image_labels = get_image_labels(os.path.join(data_dir, 'LAD_annotations'))
+            inverse_weights = torch.tensor(list(image_labels.label_code.value_counts().sort_index()), dtype=torch.float)
+            weights = 1 / inverse_weights
+
+            classes = list(image_labels['label_code'])
+
+            tc, _, _ = random_split(classes, [train_size, val_size, test_size],
+                                    generator=torch.Generator().manual_seed(42))
+
+            sampler = WeightedRandomSampler(weights=weights[tc], num_samples=train_size, replacement=True,
+                                            generator=torch.Generator().manual_seed(42))
+
+        if split == 'train':
+            ds = train_ds
+        elif split == 'val':
+            ds = val_ds
+        else:
+            ds = test_ds
+
+        super(LadLabelsDataLoader, self).__init__(
+            dataset=ds,
+            batch_size=batch_size,
+            shuffle=True if split == 'train' and not sample else False,
+            sampler=sampler if split == 'train' and sample else None,
+            num_workers=num_workers)
+
+
+class LadAttributesDataLoader(DataLoader):
+    def __init__(self, data_dir, split='train', image_size=224, batch_size=16, num_workers=8, train_split=0.6,
+                 valid_split=0.2):
+        if split == 'train':
+            transform = transforms.Compose([
+                transforms.Resize((image_size, image_size)),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.Resize((image_size, image_size)),
+                transforms.ToTensor(),
+                transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+            ])
+
+        lad_dataset = LadAttributesDataset(data_dir, transform=transform, crop_bb=False)
+
+        size = len(lad_dataset)
+        train_size = int(size * train_split)
+        val_size = int(size * valid_split)
+        test_size = size - train_size - val_size
+
+        train_ds, val_ds, test_ds = \
+            random_split(lad_dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(42))
+
+        if split == 'train':
+            ds = train_ds
+        elif split == 'val':
+            ds = val_ds
+        else:
+            ds = test_ds
+
+        super(LadAttributesDataLoader, self).__init__(
+            dataset=ds,
             batch_size=batch_size,
             shuffle=True if split == 'train' else False,
             num_workers=num_workers)

@@ -1,32 +1,30 @@
-import os
 import torch
+import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 from model import VisionTransformer
-from config import get_eval_config
 from checkpoint import load_checkpoint
 from data_loaders import *
-from utils import accuracy, setup_device
+from utils import setup_device
 
 
-def main():
-
-    config = get_eval_config()
-
+def evaluate(config, metric_names, metric_fns):
     # device
     device, device_ids = setup_device(config.n_gpu)
 
     # create model
     model = VisionTransformer(
-             image_size=(config.image_size, config.image_size),
-             patch_size=(config.patch_size, config.patch_size),
-             emb_dim=config.emb_dim,
-             mlp_dim=config.mlp_dim,
-             num_heads=config.num_heads,
-             num_layers=config.num_layers,
-             num_classes=config.num_classes,
-             attn_dropout_rate=config.attn_dropout_rate,
-             dropout_rate=config.dropout_rate)
+        image_size=(config.image_size, config.image_size),
+        patch_size=(config.patch_size, config.patch_size),
+        emb_dim=config.emb_dim,
+        mlp_dim=config.mlp_dim,
+        num_heads=config.num_heads,
+        num_layers=config.num_layers,
+        hidden_layers_dim=config.hidden_layers_dim,
+        num_classes=config.num_classes,
+        attn_dropout_rate=config.attn_dropout_rate,
+        dropout_rate=config.dropout_rate,
+        classifier_activation=eval('nn.' + config.classifier_activation))
 
     # load checkpoint
     if config.checkpoint_path:
@@ -41,17 +39,21 @@ def main():
 
     # create dataloader
     data_loader = eval("{}DataLoader".format(config.dataset))(
-                    data_dir=os.path.join(config.data_dir, config.dataset),
-                    image_size=config.image_size,
-                    batch_size=config.batch_size,
-                    num_workers=config.num_workers,
-                    split='val')
+        data_dir=config.data_dir,
+        image_size=config.image_size,
+        batch_size=config.batch_size,
+        num_workers=config.num_workers,
+        split='test')
     total_batch = len(data_loader)
 
     # starting evaluation
     print("Starting evaluation")
-    acc1s = []
-    acc5s = []
+
+    m1_name, m2_name = metric_names
+    m1_fn, m2_fn = metric_fns
+
+    m1s = []
+    m2s = []
     model.eval()
     with torch.no_grad():
         pbar = tqdm(enumerate(data_loader), total=total_batch)
@@ -62,15 +64,17 @@ def main():
             target = target.to(device)
 
             pred_logits = model(data)
-            acc1, acc5 = accuracy(pred_logits, target, topk=(1, 5))
 
-            acc1s.append(acc1.item())
-            acc5s.append(acc5.item())
+            m1, m2 = m1_fn(pred_logits, target), m2_fn(pred_logits, target)
 
-            pbar.set_postfix(acc1=acc1.item(), acc5=acc5.item())
+            m1s.append(m1.item())
+            m2s.append(m2.item())
 
-    print("Evaluation of model {:s} on dataset {:s}, Acc@1: {:.4f}, Acc@5: {:.4f}".format(config.model_arch, config.dataset, np.mean(acc1s), np.mean(acc5s)))
+            pbar.set_postfix(**{m1_name: m1.item(), m2_name: m2.item()})
 
-
-if __name__ == '__main__':
-    main()
+    print("Evaluation of model {:s} on dataset {:s}, {}: {:.4f}, {}: {:.4f}".format(config.model_arch,
+                                                                                    config.dataset,
+                                                                                    m1_name,
+                                                                                    np.mean(m1s),
+                                                                                    m2_name,
+                                                                                    np.mean(m2s)))
