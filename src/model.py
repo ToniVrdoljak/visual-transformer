@@ -163,6 +163,7 @@ class VisionTransformer(nn.Module):
                  mlp_dim=3072,
                  num_heads=12,
                  num_layers=12,
+                 hidden_layers_dim=[],
                  num_classes=1000,
                  attn_dropout_rate=0.0,
                  dropout_rate=0.1,
@@ -188,8 +189,21 @@ class VisionTransformer(nn.Module):
             dropout_rate=dropout_rate,
             attn_dropout_rate=attn_dropout_rate)
 
-        # classfier
-        self.classifier = nn.Linear(emb_dim, num_classes)
+        # classifier
+        hidden_layers = []
+
+        hidden_layers_dim = [emb_dim] + hidden_layers_dim
+
+        for in_dim, out_dim in zip(hidden_layers_dim[:-1], hidden_layers_dim[1:]):
+            fc = nn.Linear(in_dim, out_dim)
+            act_func = nn.ReLU()
+
+            hidden_layers.append(fc)
+            hidden_layers.append(act_func)
+
+        top = nn.Linear(hidden_layers_dim[-1], num_classes)
+
+        self.classifier = nn.Sequential(*hidden_layers, top)
 
     def forward(self, x):
         emb = self.embedding(x)     # (n, c, gh, gw)
@@ -210,7 +224,7 @@ class VisionTransformer(nn.Module):
 
 
 if __name__ == '__main__':
-    model = VisionTransformer(num_layers=2)
+    model = VisionTransformer(num_layers=2, hidden_layers_dim=[500, 700])
     x = torch.randn((2, 3, 256, 256))
     out = model(x)
 
