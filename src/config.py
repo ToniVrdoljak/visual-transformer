@@ -1,5 +1,5 @@
 import argparse
-from utils import process_config
+from utils import process_config, parse_yaml_config
 
 
 def get_eval_config():
@@ -44,6 +44,16 @@ def get_train_config():
     parser.add_argument("--dataset", type=str, default='ImageNet', help="dataset for fine-tunning/evaluation")
     parser.add_argument("--num-classes", type=int, default=1000, help="number of classes in dataset")
     config = parser.parse_args()
+
+    # model config
+    config = eval("get_{}_config".format(config.model_arch))(config)
+    process_config(config)
+    print_config(config)
+    return config
+
+
+def get_train_yaml_config(config_path):
+    config = parse_yaml_config(config_path)
 
     # model config
     config = eval("get_{}_config".format(config.model_arch))(config)

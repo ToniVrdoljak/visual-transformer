@@ -167,7 +167,8 @@ class VisionTransformer(nn.Module):
                  num_classes=1000,
                  attn_dropout_rate=0.0,
                  dropout_rate=0.1,
-                 feat_dim=None):
+                 feat_dim=None,
+                 classifier_activation=nn.ReLU):
         super(VisionTransformer, self).__init__()
         h, w = image_size
 
@@ -196,10 +197,9 @@ class VisionTransformer(nn.Module):
 
         for in_dim, out_dim in zip(hidden_layers_dim[:-1], hidden_layers_dim[1:]):
             fc = nn.Linear(in_dim, out_dim)
-            act_func = nn.ReLU()
 
             hidden_layers.append(fc)
-            hidden_layers.append(act_func)
+            hidden_layers.append(classifier_activation())
 
         top = nn.Linear(hidden_layers_dim[-1], num_classes)
 

@@ -1,0 +1,32 @@
+exp_name: ft
+n_gpu: 1
+tensorboard: False
+model_arch: b32
+checkpoint_path: null
+image_size: 384
+batch_size: 5
+num_workers: 1
+train_steps: 10000
+data_dir: ../data
+dataset: CIFAR10
+hidden_layers_dim:
+  - 500
+  - 600
+num_classes: 1000
+classifier_activation: ReLU
+
+optimizer:
+  type: SGD
+  parameters:
+    lr: 0.001
+    weight_decay: 0.0
+    momentum: 0.9
+
+lr_scheduler:
+  type: OneCycleLR
+  step_per_batch: False
+  parameters:
+    max_lr: 0.001
+    pct_start: 0.05
+    total_steps: 10000
+
