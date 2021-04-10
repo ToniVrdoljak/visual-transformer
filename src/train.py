@@ -145,8 +145,9 @@ def label_training(config):
     if config.checkpoint_path:
         state_dict = load_checkpoint(config.checkpoint_path)
         if config.reset_classifier:
-            del state_dict['classifier.weight']
-            del state_dict['classifier.bias']
+            c_keys = [key for key in state_dict.keys() if key.startswith('classifier')]
+            for key in c_keys:
+                del state_dict[key]
             print("re-initialize fc layer")
             model.load_state_dict(state_dict, strict=False)
         else:
@@ -251,8 +252,9 @@ def attributes_training(config):
     if config.checkpoint_path:
         state_dict = load_checkpoint(config.checkpoint_path)
         if config.reset_classifier:
-            del state_dict['classifier.weight']
-            del state_dict['classifier.bias']
+            c_keys = [key for key in state_dict.keys() if key.startswith('classifier')]
+            for key in c_keys:
+                del state_dict[key]
             print("re-initialize fc layer")
             model.load_state_dict(state_dict, strict=False)
         else:
