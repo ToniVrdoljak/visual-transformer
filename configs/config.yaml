@@ -5,15 +5,15 @@ model_arch: b32
 checkpoint_path: /home/toni/velebitai_task/visual-transformer/weights/pytorch/imagenet21k+imagenet2012_ViT-B_32.pth
 reset_classifier: True
 image_size: 384
-batch_size: 5
-num_workers: 1
+batch_size: 10
+num_workers: 2
 train_steps: 10000
-data_dir: ../data
-dataset: CIFAR10
+data_dir: /home/toni/Downloads/lad
+dataset: LadAttributes
 hidden_layers_dim:
   - 500
   - 600
-num_classes: 1000
+num_classes: 359
 classifier_activation: ReLU
 
 optimizer:
