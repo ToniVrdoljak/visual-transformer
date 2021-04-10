@@ -119,7 +119,7 @@ def label_training(config):
     # load checkpoint
     if config.checkpoint_path:
         state_dict = load_checkpoint(config.checkpoint_path)
-        if config.num_classes != state_dict['classifier.weight'].size(0):
+        if config.reset_classifier:
             del state_dict['classifier.weight']
             del state_dict['classifier.bias']
             print("re-initialize fc layer")

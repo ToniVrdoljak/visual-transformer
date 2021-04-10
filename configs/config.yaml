@@ -2,7 +2,8 @@ exp_name: ft
 n_gpu: 1
 tensorboard: False
 model_arch: b32
-checkpoint_path: null
+checkpoint_path: /home/toni/velebitai_task/visual-transformer/weights/pytorch/imagenet21k+imagenet2012_ViT-B_32.pth
+reset_classifier: True
 image_size: 384
 batch_size: 5
 num_workers: 1
