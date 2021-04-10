@@ -111,7 +111,7 @@ class LadAttributesDataset(Dataset):
         if self.transform:
             x = self.transform(x)
 
-        return x, torch.tensor(attributes)
+        return x, torch.tensor(attributes, dtype=torch.float)
 
     def __len__(self):
         return self.img_attributes.shape[0]

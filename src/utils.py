@@ -53,6 +53,26 @@ def accuracy(output, target, topk=(1,)):
     return res
 
 
+def jaccard_index(output, target):
+    pred = output > 0.0
+    target = target.bool()
+
+    intersection = pred.logical_and(target)
+    union = pred.logical_or(target)
+
+    card_intersection = intersection.sum(dim=1)
+    card_union = union.sum(dim=1)
+
+    return torch.mean(card_intersection / card_union)
+
+
+def hamming_loss(output, target):
+    pred = output > 0.0
+    target = target.bool()
+
+    return (pred != target).to(torch.float).mean()
+
+
 def setup_device(n_gpu_use):
     n_gpu = torch.cuda.device_count()
     if n_gpu_use > 0 and n_gpu == 0:
