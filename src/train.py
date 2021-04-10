@@ -314,8 +314,8 @@ def attributes_training(config):
 
         # best acc
         best = False
-        if log['val_acc1'] > best_acc:
-            best_acc = log['val_acc1']
+        if log['val_jaccard'] > best_acc:
+            best_acc = log['val_jaccard']
             best = True
 
         # save model
