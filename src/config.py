@@ -45,6 +45,8 @@ def get_train_config():
     parser.add_argument("--num-classes", type=int, default=1000, help="number of classes in dataset")
     config = parser.parse_args()
 
+    config.optimizer = {'type': 'SGD', 'parameters': {'lr': config.lr}}
+
     # model config
     config = eval("get_{}_config".format(config.model_arch))(config)
     process_config(config)
