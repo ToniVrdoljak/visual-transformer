@@ -71,8 +71,10 @@ def get_b16_config(config):
     config.mlp_dim = 3072
     config.num_heads = 12
     config.num_layers = 12
-    config.attn_dropout_rate = 0.0
-    config.dropout_rate = 0.1
+    if not hasattr(config, 'attn_dropout_rate'):
+        config.attn_dropout_rate = 0.0
+    if not hasattr(config, 'dropout_rate'):
+        config.dropout_rate = 0.1
     return config
 
 
@@ -90,8 +92,10 @@ def get_l16_config(config):
     config.mlp_dim = 4096
     config.num_heads = 16
     config.num_layers = 24
-    config.attn_dropout_rate = 0.0
-    config.dropout_rate = 0.1
+    if not hasattr(config, 'attn_dropout_rate'):
+        config.attn_dropout_rate = 0.0
+    if not hasattr(config, 'dropout_rate'):
+        config.dropout_rate = 0.1
     return config
 
 
@@ -109,8 +113,10 @@ def get_h14_config(config):
     config.mlp_dim = 5120
     config.num_heads = 16
     config.num_layers = 32
-    config.attn_dropout_rate = 0.0
-    config.dropout_rate = 0.1
+    if not hasattr(config, 'attn_dropout_rate'):
+        config.attn_dropout_rate = 0.0
+    if not hasattr(config, 'dropout_rate'):
+        config.dropout_rate = 0.1
     return config
 
 

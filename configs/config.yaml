@@ -9,12 +9,14 @@ batch_size: 10
 num_workers: 2
 train_steps: 10000
 data_dir: /home/toni/Downloads/lad
-dataset: LadAttributes
+dataset: LadLabels
 hidden_layers_dim:
   - 500
-  - 600
-num_classes: 359
+  - 350
+num_classes: 240
 classifier_activation: ReLU
+attn_dropout_rate: 0.3
+dropout_rate: 0.3
 
 optimizer:
   type: SGD
@@ -25,7 +27,7 @@ optimizer:
 
 lr_scheduler:
   type: OneCycleLR
-  step_per_batch: False
+  step_per_batch: True
   parameters:
     max_lr: 0.001
     pct_start: 0.05
