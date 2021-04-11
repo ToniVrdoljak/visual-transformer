@@ -285,7 +285,8 @@ def attributes_training(config):
 
     # training criterion
     print("create criterion and optimizer")
-    criterion = nn.BCEWithLogitsLoss()
+    pos_weight = torch.full((config.num_classes,), config.pos_weight).to(device)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
     # create optimizers and learning rate scheduler
     optimizer = eval('torch.optim.' + config.optimizer['type'])(
