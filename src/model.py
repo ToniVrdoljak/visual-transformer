@@ -97,6 +97,9 @@ class SelfAttention(nn.Module):
 
         out = self.out(out, dims=([2, 3], [0, 1]))
 
+        if self.dropout:
+            out = self.dropout(out)
+
         return out
 
 
@@ -106,10 +109,6 @@ class EncoderBlock(nn.Module):
 
         self.norm1 = nn.LayerNorm(in_dim)
         self.attn = SelfAttention(in_dim, heads=num_heads, dropout_rate=attn_dropout_rate)
-        if dropout_rate > 0:
-            self.dropout = nn.Dropout(dropout_rate)
-        else:
-            self.dropout = None
         self.norm2 = nn.LayerNorm(in_dim)
         self.mlp = MlpBlock(in_dim, mlp_dim, in_dim, dropout_rate)
 
@@ -117,8 +116,7 @@ class EncoderBlock(nn.Module):
         residual = x
         out = self.norm1(x)
         out = self.attn(out)
-        if self.dropout:
-            out = self.dropout(out)
+
         out += residual
         residual = out
 
