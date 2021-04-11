@@ -17,6 +17,7 @@ num_classes: 240
 classifier_activation: ReLU
 attn_dropout_rate: 0.3
 dropout_rate: 0.3
+classifier_dropout_rate: 0.1
 
 optimizer:
   type: SGD

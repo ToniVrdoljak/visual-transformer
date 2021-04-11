@@ -139,7 +139,8 @@ def label_training(config):
              num_classes=config.num_classes,
              attn_dropout_rate=config.attn_dropout_rate,
              dropout_rate=config.dropout_rate,
-             classifier_activation=eval('nn.' + config.classifier_activation))
+             classifier_activation=eval('nn.' + config.classifier_activation),
+             classifier_dropout_rate=config.classifier_dropout_rate)
 
     # load checkpoint
     if config.checkpoint_path:
@@ -246,7 +247,8 @@ def attributes_training(config):
              num_classes=config.num_classes,
              attn_dropout_rate=config.attn_dropout_rate,
              dropout_rate=config.dropout_rate,
-             classifier_activation=eval('nn.' + config.classifier_activation))
+             classifier_activation=eval('nn.' + config.classifier_activation),
+             classifier_dropout_rate=config.classifier_dropout_rate)
 
     # load checkpoint
     if config.checkpoint_path:
