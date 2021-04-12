@@ -107,7 +107,7 @@ class LadLabelsDataLoader(DataLoader):
                 transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
             ])
 
-        lad_dataset = LadLabelsDataset(data_dir, transform=transform)
+        lad_dataset = LadLabelsDataset(data_dir, transform=transform, crop_bb=False)
 
         size = len(lad_dataset)
         train_size = int(size * train_split)
@@ -153,7 +153,7 @@ class LadAttributesDataLoader(DataLoader):
                 transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
             ])
 
-        lad_dataset = LadAttributesDataset(data_dir, transform=transform)
+        lad_dataset = LadAttributesDataset(data_dir, transform=transform, crop_bb=False)
 
         size = len(lad_dataset)
         train_size = int(size * train_split)
