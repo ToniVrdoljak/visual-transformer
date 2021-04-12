@@ -7,6 +7,7 @@ from config import get_train_config, get_train_yaml_config
 from checkpoint import load_checkpoint
 from data_loaders import *
 from utils import setup_device, accuracy, MetricTracker, TensorboardWriter, f1, jaccard_index, f1_macro_mc
+from lad_datasets import get_image_labels
 
 
 def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, metrics, device=torch.device('cpu'),
@@ -179,7 +180,14 @@ def label_training(config):
 
     # training criterion
     print("create criterion and optimizer")
-    criterion = nn.CrossEntropyLoss()
+
+    if config.use_weights:
+        image_labels = get_image_labels(os.path.join(config.data_dir, 'LAD_annotations'))
+        inverse_weights = torch.tensor(list(image_labels.label_code.value_counts().sort_index()), dtype=torch.float)
+        weights = 1 / inverse_weights
+        criterion = nn.CrossEntropyLoss(weight=weights.to(device))
+    else:
+        criterion = nn.CrossEntropyLoss()
 
     # create optimizers and learning rate scheduler
     optimizer = eval('torch.optim.' + config.optimizer['type'])(
