@@ -7,6 +7,7 @@ from collections import OrderedDict
 from datetime import datetime
 import importlib
 import yaml
+from pytorch_lightning.metrics.functional import f1 as f1_mc
 
 
 class Config:
@@ -53,6 +54,10 @@ def accuracy(output, target, topk=(1,)):
     return res
 
 
+def f1_macro_mc(output, target):
+    return f1_mc(output, target, num_classes=output.shape[-1], average='macro')
+
+
 def jaccard_index(output, target):
     pred = output > 0.0
     target = target.bool()
@@ -71,6 +76,37 @@ def hamming_loss(output, target):
     target = target.bool()
 
     return (pred != target).to(torch.float).mean()
+
+
+def precision(output, target):
+    pred = output > 0.0
+    target = target.bool()
+
+    intersection = pred.logical_and(target)
+
+    card_intersection = intersection.sum(dim=1)
+    card_pred = pred.sum(dim=1)
+
+    return torch.mean(card_intersection / card_pred)
+
+
+def recall(output, target):
+    pred = output > 0.0
+    target = target.bool()
+
+    intersection = pred.logical_and(target)
+
+    card_intersection = intersection.sum(dim=1)
+    card_target = target.sum(dim=1)
+
+    return torch.mean(card_intersection / card_target)
+
+
+def f1(output, target):
+    p = precision(output, target)
+    r = recall(output, target)
+
+    return 2 * p * r / (p + r)
 
 
 def setup_device(n_gpu_use):

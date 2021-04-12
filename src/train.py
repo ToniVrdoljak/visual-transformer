@@ -6,7 +6,7 @@ from model import VisionTransformer
 from config import get_train_config, get_train_yaml_config
 from checkpoint import load_checkpoint
 from data_loaders import *
-from utils import setup_device, accuracy, MetricTracker, TensorboardWriter, hamming_loss, jaccard_index
+from utils import setup_device, accuracy, MetricTracker, TensorboardWriter, f1, jaccard_index, f1_macro_mc
 
 
 def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, metrics, device=torch.device('cpu'),
@@ -27,29 +27,30 @@ def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, m
             lr_scheduler.step()
 
         if train_type == 'labels':
-            acc1, acc5 = accuracy(batch_pred, batch_target, topk=(1, 5))
+            (acc1,) = accuracy(batch_pred, batch_target, topk=(1,))
+            f1_macro = f1_macro_mc(batch_pred, batch_target)
 
             metrics.writer.set_step((epoch - 1) * len(data_loader) + batch_idx)
             metrics.update('loss', loss.item())
             metrics.update('acc1', acc1.item())
-            metrics.update('acc5', acc5.item())
+            metrics.update('F1_macro', f1_macro.item())
 
             if batch_idx % 100 == 0:
-                print("Train Epoch: {:03d} Batch: {:05d}/{:05d} Loss: {:.4f} Acc@1: {:.2f}, Acc@5: {:.2f}"
-                        .format(epoch, batch_idx, len(data_loader), loss.item(), acc1.item(), acc5.item()))
+                print("Train Epoch: {:03d} Batch: {:05d}/{:05d} Loss: {:.4f} Acc@1: {:.2f}, F1_macro: {:.2f}"
+                        .format(epoch, batch_idx, len(data_loader), loss.item(), acc1.item(), f1_macro.item()))
 
         elif train_type == 'attributes':
             jaccard = jaccard_index(batch_pred, batch_target)
-            hamming = hamming_loss(batch_pred, batch_target)
+            f1_score = f1(batch_pred, batch_target)
 
             metrics.writer.set_step((epoch - 1) * len(data_loader) + batch_idx)
             metrics.update('loss', loss.item())
             metrics.update('jaccard', jaccard.item())
-            metrics.update('hamming', hamming.item())
+            metrics.update('F1', f1_score.item())
 
             if batch_idx % 100 == 0:
-                print("Train Epoch: {:03d} Batch: {:05d}/{:05d} Loss: {:.4f} jaccard: {:.2f}, hamming: {:.2f}"
-                      .format(epoch, batch_idx, len(data_loader), loss.item(), jaccard.item(), hamming.item()))
+                print("Train Epoch: {:03d} Batch: {:05d}/{:05d} Loss: {:.4f} jaccard: {:.2f}, F1: {:.2f}"
+                      .format(epoch, batch_idx, len(data_loader), loss.item(), jaccard.item(), f1_score.item()))
 
     if not scheduler_step_per_batch:
         lr_scheduler.step()
@@ -72,10 +73,11 @@ def valid_epoch(epoch, model, data_loader, criterion, metrics, device=torch.devi
             loss = criterion(batch_pred, batch_target)
 
             if valid_type == 'labels':
-                m1, m2 = accuracy(batch_pred, batch_target, topk=(1, 5))
+                (m1,) = accuracy(batch_pred, batch_target, topk=(1,))
+                m2 = f1_macro_mc(batch_pred, batch_target)
             elif valid_type == 'attributes':
                 m1 = jaccard_index(batch_pred, batch_target)
-                m2 = hamming_loss(batch_pred, batch_target)
+                m2 = f1(batch_pred, batch_target)
 
             losses.append(loss.item())
             acc1s.append(m1.item())
@@ -89,10 +91,10 @@ def valid_epoch(epoch, model, data_loader, criterion, metrics, device=torch.devi
 
     if valid_type == 'labels':
         metrics.update('acc1', m1)
-        metrics.update('acc5', m2)
+        metrics.update('F1_macro', m2)
     elif valid_type == 'attributes':
         metrics.update('jaccard', m1)
-        metrics.update('hamming', m2)
+        metrics.update('F1', m2)
 
     return metrics.result()
 
@@ -122,7 +124,7 @@ def label_training(config):
     writer = TensorboardWriter(config.summary_dir, config.tensorboard)
 
     # metric tracker
-    metric_names = ['loss', 'acc1', 'acc5']
+    metric_names = ['loss', 'acc1', 'F1_macro']
     train_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
     valid_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
 
@@ -230,7 +232,7 @@ def attributes_training(config):
     writer = TensorboardWriter(config.summary_dir, config.tensorboard)
 
     # metric tracker
-    metric_names = ['loss', 'jaccard', 'hamming']
+    metric_names = ['loss', 'jaccard', 'f1']
     train_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
     valid_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
 
