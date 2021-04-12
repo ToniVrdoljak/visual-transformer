@@ -170,7 +170,8 @@ def label_training(config):
                     image_size=config.image_size,
                     batch_size=config.batch_size,
                     num_workers=config.num_workers,
-                    split='train')
+                    split='train',
+                    sample=config.sample)
     valid_dataloader = eval("{}DataLoader".format(config.dataset))(
                     data_dir=config.data_dir,
                     image_size=config.image_size,
