@@ -91,8 +91,8 @@ class ImageNetDataLoader(DataLoader):
 
 
 class LadLabelsDataLoader(DataLoader):
-    def __init__(self, data_dir, split='train', image_size=224, batch_size=16, num_workers=8, train_split=0.8,
-                 sample=False):
+    def __init__(self, data_dir, split='train', image_size=224, batch_size=16, num_workers=8, train_split=0.6,
+                 valid_split=0.2, sample=False):
         if split == 'train':
             transform = transforms.Compose([
                 transforms.Resize((image_size, image_size)),
@@ -111,10 +111,11 @@ class LadLabelsDataLoader(DataLoader):
 
         size = len(lad_dataset)
         train_size = int(size * train_split)
-        val_size = size - train_size
+        val_size = int(size * valid_split)
+        test_size = size - train_size - val_size
 
-        train_ds, val_ds = \
-            random_split(lad_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+        train_ds, val_ds, test_ds = \
+            random_split(lad_dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(42))
 
         if split == 'train' and sample:
             print('Creating weighted sampler')
@@ -124,13 +125,21 @@ class LadLabelsDataLoader(DataLoader):
 
             classes = list(image_labels['label_code'])
 
-            tc, _ = random_split(classes, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+            tc, _, _ = random_split(classes, [train_size, val_size, test_size],
+                                    generator=torch.Generator().manual_seed(42))
 
             sampler = WeightedRandomSampler(weights=weights[tc], num_samples=train_size, replacement=True,
                                             generator=torch.Generator().manual_seed(42))
 
+        if split == 'train':
+            ds = train_ds
+        elif split == 'val':
+            ds = val_ds
+        else:
+            ds = test_ds
+
         super(LadLabelsDataLoader, self).__init__(
-            dataset=train_ds if split == 'train' else val_ds,
+            dataset=ds,
             batch_size=batch_size,
             shuffle=True if split == 'train' and not sample else False,
             sampler=sampler if split == 'train' and sample else None,
@@ -138,7 +147,8 @@ class LadLabelsDataLoader(DataLoader):
 
 
 class LadAttributesDataLoader(DataLoader):
-    def __init__(self, data_dir, split='train', image_size=224, batch_size=16, num_workers=8, train_split=0.8):
+    def __init__(self, data_dir, split='train', image_size=224, batch_size=16, num_workers=8, train_split=0.6,
+                 valid_split=0.2):
         if split == 'train':
             transform = transforms.Compose([
                 transforms.Resize((image_size, image_size)),
@@ -157,13 +167,21 @@ class LadAttributesDataLoader(DataLoader):
 
         size = len(lad_dataset)
         train_size = int(size * train_split)
-        val_size = size - train_size
+        val_size = int(size * valid_split)
+        test_size = size - train_size - val_size
 
-        train_ds, val_ds = \
-            random_split(lad_dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+        train_ds, val_ds, test_ds = \
+            random_split(lad_dataset, [train_size, val_size, test_size], generator=torch.Generator().manual_seed(42))
+
+        if split == 'train':
+            ds = train_ds
+        elif split == 'val':
+            ds = val_ds
+        else:
+            ds = test_ds
 
         super(LadAttributesDataLoader, self).__init__(
-            dataset=train_ds if split == 'train' else val_ds,
+            dataset=ds,
             batch_size=batch_size,
             shuffle=True if split == 'train' else False,
             num_workers=num_workers)
