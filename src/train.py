@@ -241,7 +241,7 @@ def attributes_training(config):
     writer = TensorboardWriter(config.summary_dir, config.tensorboard)
 
     # metric tracker
-    metric_names = ['loss', 'jaccard', 'f1']
+    metric_names = ['loss', 'jaccard', 'F1']
     train_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
     valid_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
 
