@@ -1,16 +1,14 @@
-import os
 import torch
 import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
 from model import VisionTransformer
-from config import get_eval_config
 from checkpoint import load_checkpoint
 from data_loaders import *
-from utils import accuracy, f1_macro_mc, jaccard_index, f1, setup_device
+from utils import setup_device
 
 
-def evaluate(config, eval_type='labels'):
+def evaluate(config, metric_names, metric_fns):
     # device
     device, device_ids = setup_device(config.n_gpu)
 
@@ -50,6 +48,10 @@ def evaluate(config, eval_type='labels'):
 
     # starting evaluation
     print("Starting evaluation")
+
+    m1_name, m2_name = metric_names
+    m1_fn, m2_fn = metric_fns
+
     m1s = []
     m2s = []
     model.eval()
@@ -63,28 +65,16 @@ def evaluate(config, eval_type='labels'):
 
             pred_logits = model(data)
 
-            if eval_type == 'labels':
-                (m1,) = accuracy(pred_logits, target, topk=(1,))
-                m2 = f1_macro_mc(pred_logits, target)
-            elif eval_type == 'attributes':
-                m1 = jaccard_index(pred_logits, target)
-                m2 = f1(pred_logits, target)
+            m1, m2 = m1_fn(pred_logits, target), m2_fn(pred_logits, target)
 
             m1s.append(m1.item())
             m2s.append(m2.item())
 
-            if eval_type == 'labels':
-                pbar.set_postfix(acc1=m1.item(), F1_macro=m2.item())
-            elif eval_type == 'attributes':
-                pbar.set_postfix(jaccard=m1.item(), F1=m2.item())
+            pbar.set_postfix(**{m1_name: m1.item(), m2_name: m2.item()})
 
-    if eval_type == 'labels':
-        print("Evaluation of model {:s} on dataset {:s}, Acc@1: {:.4f}, F1_macro: {:.4f}".format(config.model_arch,
-                                                                                              config.dataset,
-                                                                                              np.mean(m1s),
-                                                                                              np.mean(m2s)))
-    elif eval_type == 'attributes':
-        print("Evaluation of model {:s} on dataset {:s}, jaccard: {:.4f}, F1: {:.4f}".format(config.model_arch,
-                                                                                              config.dataset,
-                                                                                              np.mean(m1s),
-                                                                                              np.mean(m2s)))
+    print("Evaluation of model {:s} on dataset {:s}, {}: {:.4f}, {}: {:.4f}".format(config.model_arch,
+                                                                                    config.dataset,
+                                                                                    m1_name,
+                                                                                    np.mean(m1s),
+                                                                                    m2_name,
+                                                                                    np.mean(m2s)))

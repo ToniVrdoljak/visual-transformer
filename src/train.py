@@ -3,16 +3,18 @@ import torch
 import torch.nn as nn
 import numpy as np
 from model import VisionTransformer
-from config import get_train_config, get_train_yaml_config
 from checkpoint import load_checkpoint
 from data_loaders import *
 from utils import setup_device, accuracy, MetricTracker, TensorboardWriter, f1, jaccard_index, f1_macro_mc
 from lad_datasets import get_image_labels
 
 
-def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, metrics, device=torch.device('cpu'),
-                scheduler_step_per_batch=True, train_type='labels'):
+def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, metrics, metric_names, metric_fns,
+                device=torch.device('cpu'), scheduler_step_per_batch=True):
     metrics.reset()
+
+    m1_name, m2_name = metric_names
+    m1_fn, m2_fn = metric_fns
 
     # training loop
     for batch_idx, (batch_data, batch_target) in enumerate(data_loader):
@@ -27,31 +29,16 @@ def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, m
         if scheduler_step_per_batch:
             lr_scheduler.step()
 
-        if train_type == 'labels':
-            (acc1,) = accuracy(batch_pred, batch_target, topk=(1,))
-            f1_macro = f1_macro_mc(batch_pred, batch_target)
+        m1, m2 = m1_fn(batch_pred, batch_target), m2_fn(batch_pred, batch_target)
 
-            metrics.writer.set_step((epoch - 1) * len(data_loader) + batch_idx)
-            metrics.update('loss', loss.item())
-            metrics.update('acc1', acc1.item())
-            metrics.update('F1_macro', f1_macro.item())
+        metrics.writer.set_step((epoch - 1) * len(data_loader) + batch_idx)
+        metrics.update('loss', loss.item())
+        metrics.update(m1_name, m1.item())
+        metrics.update(m2_name, m2.item())
 
-            if batch_idx % 100 == 0:
-                print("Train Epoch: {:03d} Batch: {:05d}/{:05d} Loss: {:.4f} Acc@1: {:.2f}, F1_macro: {:.2f}"
-                        .format(epoch, batch_idx, len(data_loader), loss.item(), acc1.item(), f1_macro.item()))
-
-        elif train_type == 'attributes':
-            jaccard = jaccard_index(batch_pred, batch_target)
-            f1_score = f1(batch_pred, batch_target)
-
-            metrics.writer.set_step((epoch - 1) * len(data_loader) + batch_idx)
-            metrics.update('loss', loss.item())
-            metrics.update('jaccard', jaccard.item())
-            metrics.update('F1', f1_score.item())
-
-            if batch_idx % 100 == 0:
-                print("Train Epoch: {:03d} Batch: {:05d}/{:05d} Loss: {:.4f} jaccard: {:.2f}, F1: {:.2f}"
-                      .format(epoch, batch_idx, len(data_loader), loss.item(), jaccard.item(), f1_score.item()))
+        if batch_idx % 100 == 0:
+            print("Train Epoch: {:03d} Batch: {:05d}/{:05d} Loss: {:.4f} {}: {:.2f}, {}: {:.2f}"
+                  .format(epoch, batch_idx, len(data_loader), loss.item(), m1_name, m1.item(), m2_name, m2.item()))
 
     if not scheduler_step_per_batch:
         lr_scheduler.step()
@@ -59,11 +46,15 @@ def train_epoch(epoch, model, data_loader, criterion, optimizer, lr_scheduler, m
     return metrics.result()
 
 
-def valid_epoch(epoch, model, data_loader, criterion, metrics, device=torch.device('cpu'), valid_type='labels'):
+def valid_epoch(epoch, model, data_loader, criterion, metrics, metric_names, metric_fns, device=torch.device('cpu')):
     metrics.reset()
     losses = []
-    acc1s = []
-    acc5s = []
+    m1s = []
+    m2s = []
+
+    m1_name, m2_name = metric_names
+    m1_fn, m2_fn = metric_fns
+
     # validation loop
     with torch.no_grad():
         for batch_idx, (batch_data, batch_target) in enumerate(data_loader):
@@ -73,29 +64,20 @@ def valid_epoch(epoch, model, data_loader, criterion, metrics, device=torch.devi
             batch_pred = model(batch_data)
             loss = criterion(batch_pred, batch_target)
 
-            if valid_type == 'labels':
-                (m1,) = accuracy(batch_pred, batch_target, topk=(1,))
-                m2 = f1_macro_mc(batch_pred, batch_target)
-            elif valid_type == 'attributes':
-                m1 = jaccard_index(batch_pred, batch_target)
-                m2 = f1(batch_pred, batch_target)
+            m1, m2 = m1_fn(batch_pred, batch_target), m2_fn(batch_pred, batch_target)
 
             losses.append(loss.item())
-            acc1s.append(m1.item())
-            acc5s.append(m2.item())
+            m1s.append(m1.item())
+            m2s.append(m2.item())
 
     loss = np.mean(losses)
-    m1 = np.mean(acc1s)
-    m2 = np.mean(acc5s)
+    m1 = np.mean(m1s)
+    m2 = np.mean(m2s)
     metrics.writer.set_step(epoch, 'valid')
     metrics.update('loss', loss)
 
-    if valid_type == 'labels':
-        metrics.update('acc1', m1)
-        metrics.update('F1_macro', m2)
-    elif valid_type == 'attributes':
-        metrics.update('jaccard', m1)
-        metrics.update('F1', m2)
+    metrics.update(m1_name, m1)
+    metrics.update(m2_name, m2)
 
     return metrics.result()
 
@@ -125,9 +107,11 @@ def label_training(config):
     writer = TensorboardWriter(config.summary_dir, config.tensorboard)
 
     # metric tracker
-    metric_names = ['loss', 'acc1', 'F1_macro']
+    metric_names = ['loss', 'acc@1', 'F1_macro']
     train_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
     valid_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
+
+    metric_functions = [lambda x, y: accuracy(x, y, topk=(1,))[0], f1_macro_mc]
 
     # create model
     print("create model")
@@ -181,7 +165,6 @@ def label_training(config):
 
     # training criterion
     print("create criterion and optimizer")
-
     if config.use_weights:
         image_labels = get_image_labels(os.path.join(config.data_dir, 'LAD_annotations'))
         inverse_weights = torch.tensor(list(image_labels.label_code.value_counts().sort_index()), dtype=torch.float)
@@ -208,19 +191,21 @@ def label_training(config):
 
         # train the model
         model.train()
-        result = train_epoch(epoch, model, train_dataloader, criterion, optimizer, lr_scheduler, train_metrics, device,
-                             config.lr_scheduler['step_per_batch'])
+        result = train_epoch(epoch, model, train_dataloader, criterion, optimizer, lr_scheduler, train_metrics,
+                             metric_names[1:], metric_functions, device, config.lr_scheduler['step_per_batch'])
         log.update(result)
 
         # validate the model
         model.eval()
-        result = valid_epoch(epoch, model, valid_dataloader, criterion, valid_metrics, device)
+        result = valid_epoch(epoch, model, valid_dataloader, criterion, valid_metrics, metric_names[1:],
+                             metric_functions, device)
+
         log.update(**{'val_' + k: v for k, v in result.items()})
 
         # best acc
         best = False
-        if log['val_acc1'] > best_acc:
-            best_acc = log['val_acc1']
+        if log['val_acc@1'] > best_acc:
+            best_acc = log['val_acc@1']
             best = True
 
         # save model
@@ -244,6 +229,8 @@ def attributes_training(config):
     metric_names = ['loss', 'jaccard', 'F1']
     train_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
     valid_metrics = MetricTracker(*[metric for metric in metric_names], writer=writer)
+
+    metric_functions = [jaccard_index, f1]
 
     # create model
     print("create model")
@@ -317,13 +304,15 @@ def attributes_training(config):
 
         # train the model
         model.train()
-        result = train_epoch(epoch, model, train_dataloader, criterion, optimizer, lr_scheduler, train_metrics, device,
-                             config.lr_scheduler['step_per_batch'], train_type='attributes')
+        result = train_epoch(epoch, model, train_dataloader, criterion, optimizer, lr_scheduler, train_metrics,
+                             metric_names[1:], metric_functions, device, config.lr_scheduler['step_per_batch'])
         log.update(result)
 
         # validate the model
         model.eval()
-        result = valid_epoch(epoch, model, valid_dataloader, criterion, valid_metrics, device, valid_type='attributes')
+        result = valid_epoch(epoch, model, valid_dataloader, criterion, valid_metrics, metric_names[1:],
+                             metric_functions, device)
+
         log.update(**{'val_' + k: v for k, v in result.items()})
 
         # best acc
